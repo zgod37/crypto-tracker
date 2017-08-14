@@ -27,7 +27,7 @@ namespace CryptoPriceWatcher {
         /// <summary>
         /// the interval between checking the API for new prices
         /// </summary>
-        private int _updateIntervalMillis = 30000;
+        private int _updateIntervalMillis = 15000;
 
         /// <summary>
         /// the current interval count used for the dispatcher timer
@@ -77,7 +77,7 @@ namespace CryptoPriceWatcher {
         /// <summary>
         /// command to update the total
         /// </summary>
-        public ICommand UpdateTotalCommand { get; set; }
+        public ICommand UpdateCommand { get; set; }
 
         /// <summary>
         /// command to add a new blank ticker
@@ -112,7 +112,7 @@ namespace CryptoPriceWatcher {
                 _tickers.Add(new Ticker(coin.Name, coin.Count, coin.EntryPrice));
             }
 
-            UpdateTotalCommand = new RelayCommand(UpdateTotal);
+            UpdateCommand = new RelayCommand(UpdateCoinDB);
             AddNewTickerCommand = new RelayCommand(AddNewTicker);
             ToggleUpdateTimerCommand = new RelayCommand(ToggleUpdateTimer);
             ZeroOutAllCoinsCommand = new RelayCommand(ZeroOutAllCoins);
@@ -124,7 +124,7 @@ namespace CryptoPriceWatcher {
             //set interval for update check and start dispatcher timer
             _updateInterval = _updateIntervalMillis / _animateIntervalMillis;
             System.Diagnostics.Debug.WriteLine($"Prices animated every {_animateIntervalMillis}ms");
-            System.Diagnostics.Debug.WriteLine($"Prices checked every {_updateIntervalMillis / 2}ms)");
+            System.Diagnostics.Debug.WriteLine($"Prices checked every {_updateIntervalMillis}ms)");
 
             UpdateTotal();
 
@@ -140,41 +140,37 @@ namespace CryptoPriceWatcher {
             _updateTimer.Interval = TimeSpan.FromMilliseconds(_animateIntervalMillis);
             _updateTimer.Tick += (sender, e) => {
 
-                //split up ticker list into two halves
-                if (_currentIntervalCount == _updateInterval / 2) {
-                    _currentIntervalCount++;
-                    for (int i = 0; i < Tickers.Count / 2; i++) {
-                        Tickers[i].CheckForNewPrice();
-                        Tickers[i].Portion = $"{(Convert.ToDouble(Tickers[i].USDHoldings.Substring(1)) / Convert.ToDouble(TotalUSD.Substring(1))):%##0}";
-                    }
-                    UpdateTotal();
-                } 
-                
-                else if (_currentIntervalCount == _updateInterval) {
+                //larget interval - check API for new price
+                if (_currentIntervalCount == _updateInterval) {
                     _currentIntervalCount = 0;
-                    for (int i = Tickers.Count / 2; i < Tickers.Count; i++) {
-                        Tickers[i].CheckForNewPrice();
-                        Tickers[i].Portion = $"{(Convert.ToDouble(Tickers[i].USDHoldings.Substring(1)) / Convert.ToDouble(TotalUSD.Substring(1))):%##0}";
-                    }
-                    UpdateTotal();
-
-                    if (NewCoinBackgroundColor != "#CCC") {
-                        NewCoinBackgroundColor = "#CCC";
-                    }
+                    UpdateTickers();
                 }
 
                 //smaller interval - otherwise check if the price needs to be animated
                 else {
-                _currentIntervalCount++;
-                foreach (Ticker ticker in Tickers) {
-                    if (ticker.IsAnimating) {
-                        ticker.AnimateMoveTowardNewPrice();
+                    _currentIntervalCount++;
+                    foreach (Ticker ticker in Tickers) {
+                        if (ticker.IsAnimating) {
+                            ticker.AnimateMoveTowardNewPrice();
+                        }
                     }
-                }
                 }
             };
 
             _updateTimer.IsEnabled = true;
+        }
+
+        private void UpdateTickers() {
+
+            for (int i = 0; i < Tickers.Count; i++) {
+                Tickers[i].CheckForNewPrice();
+                Tickers[i].Portion = $"{(Convert.ToDouble(Tickers[i].USDHoldings.Substring(1)) / Convert.ToDouble(TotalUSD.Substring(1))):%##0}";
+            }
+            UpdateTotal();
+
+            if (NewCoinBackgroundColor != "#CCC") {
+                NewCoinBackgroundColor = "#CCC";
+            }
         }
 
         /// <summary>
@@ -182,12 +178,27 @@ namespace CryptoPriceWatcher {
         /// </summary>
         private void ToggleUpdateTimer() {
             if (_updateTimer.IsEnabled == false) {
-                TotalUSDTextColor = "Black";
-                _updateTimer.IsEnabled = true;
+                EnableUpdateTimer();
             } else {
-                TotalUSDTextColor = "Orange";
-                _updateTimer.IsEnabled = false;
+                DisableUpdateTimer();
             }
+        }
+
+        /// <summary>
+        /// enable the update timer
+        /// </summary>
+        private void EnableUpdateTimer() {
+            TotalUSDTextColor = "Black";
+            _updateTimer.IsEnabled = true;
+        }
+
+
+        /// <summary>
+        /// disable the update timer
+        /// </summary>
+        private void DisableUpdateTimer() {
+            TotalUSDTextColor = "Orange";
+            _updateTimer.IsEnabled = false;
         }
 
         /// <summary>
@@ -243,6 +254,34 @@ namespace CryptoPriceWatcher {
             }
             TotalUSD = $"${total:###0.00}";
             TotalProfit = $"{total - _initialCost:+$###0.00;-$###0.00}";
+        }
+
+        /// <summary>
+        /// update the coins and save the new coin info in the database
+        /// ***NOTE*** function needs optimizing, currently stops dispatcher, should change to async task
+        /// ***NOTE*** and also builds new CoinInfo list which is unnecessary
+        /// ***NOTE***  b/c info is already stored Tickers ObservableCollection
+        /// </summary>
+        private void UpdateCoinDB() {
+
+            //update the totals
+            UpdateTotal();
+
+            //stop update dispatcher temporarily while updating DB
+            DisableUpdateTimer();
+
+            //build list of new coininfo
+            List<CoinInfo> newCoins = new List<CoinInfo>();
+            foreach (Ticker ticker in Tickers) {
+                newCoins.Add(new CoinInfo(ticker.CoinName, Double.Parse(ticker.CoinCount), Double.Parse(ticker.EntryPrice.Substring(1))));
+            }
+
+            //update DB
+            DBConnection db = new DBConnection();
+            db.UpdateCoins(newCoins);
+
+            //restart update dispatcher
+            EnableUpdateTimer();
         }
 
         /// <summary>
