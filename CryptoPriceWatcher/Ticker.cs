@@ -16,11 +16,6 @@ namespace CryptoPriceWatcher {
         private String _baseApiUrl = "https://min-api.cryptocompare.com/data/price?fsym=";
 
         /// <summary>
-        /// the base url to the price api (alternate)
-        /// </summary>
-        private String _baseAlternateApiUrl = "https://api.cryptonator.com/api/ticker/";
-
-        /// <summary>
         /// the previous price for the coin
         /// </summary>
         private double _lastPrice = 0;
@@ -35,11 +30,25 @@ namespace CryptoPriceWatcher {
         /// </summary>
         private double _priceIncrementValue = 0.01;
 
+        /// <summary>
+        /// the alpha value for the background color
+        /// </summary>
         private byte _borderBackgroundColorA = 0;
-        private byte _borderBackgroundColorR = 0;
-        private byte _borderBackgroundColorG = 0;
-        private byte _borderBackgroundColorB = 0;
 
+        /// <summary>
+        /// the R value for the background color
+        /// </summary>
+        private byte _borderBackgroundColorR = 0;
+
+        /// <summary>
+        /// the G value for the background color
+        /// </summary>
+        private byte _borderBackgroundColorG = 0;
+
+        /// <summary>
+        /// the B value for the background color
+        /// </summary>
+        private byte _borderBackgroundColorB = 0;
 
         #endregion
 
@@ -198,8 +207,6 @@ namespace CryptoPriceWatcher {
 
         public static readonly DependencyProperty BorderBackgroundColorDP = DependencyProperty.Register("BorderBackgroundColor", typeof(String), typeof(Ticker), new UIPropertyMetadata(""));
 
-        //public static readonly DependencyProperty BorderBrushColorOpacityDP = DependencyProperty.Register("BorderBrushColorOpacity", typeof(double), typeof(Ticker), new UIPropertyMetadata(""));
-
         #endregion
 
         #region Constructor
@@ -230,30 +237,18 @@ namespace CryptoPriceWatcher {
         #region Public Methods
 
         /// <summary>
-        /// check the API to see if the price has changed
+        /// set the new ticker price and update if price has changed
         /// </summary>
-        public void CheckForNewPrice() {
-            System.Diagnostics.Debug.WriteLine($"Checking price for {CoinName}");
-
-            SetPriceFromApi();
-            
+        /// <param name="newPrice"></param>
+        public void SetNewPrice(double newPrice) {
+            _newPrice = newPrice;
             if (_newPrice != _lastPrice) {
                 UpdateDisplay();
             }
         }
 
         /// <summary>
-        /// test function to manually increase/decrease price
-        /// </summary>
-        /// <param name="increment">the amount to move the price +/-</param>
-        public void TestIncreaseNewPrice(double increment) {
-            _newPrice += increment;
-            UpdateDisplay();
-        }
-
-
-        /// <summary>
-        /// updates the UI with new values without animating
+        /// updates the UI with new values WITHOUT animating
         /// </summary>
         public void Update() {
             CurrentPriceText = $"${_newPrice:###0.00}";
@@ -307,6 +302,7 @@ namespace CryptoPriceWatcher {
         /// update the info displayed on the UI
         /// </summary>
         private void UpdateDisplay() {
+
             System.Diagnostics.Debug.WriteLine($"New price found for {CoinName} = {_newPrice}");
             IsAnimating = true;
 
@@ -351,10 +347,8 @@ namespace CryptoPriceWatcher {
             Profit = $"{profit:+$###0.00;-$###0.00}";
         }
 
-
         /// <summary>
         /// set the price from the main
-        /// ***NOTE*** doing this the ugly way for now, need to come back and change later
         /// </summary>
         private void SetPriceFromApi() {
 
@@ -378,57 +372,6 @@ namespace CryptoPriceWatcher {
                     System.Diagnostics.Debug.WriteLine($"API ERROR for {CoinName} - {json["error"]}");
                 }
             }
-        }
-
-        /// <summary>
-        /// set price from the api
-        /// </summary>
-        private void SetPriceFromAlternateApi() {
-            //get the ticker from the api
-            var ticker = GetTickerFromAlternateApi();
-            if (ticker == null) {
-                System.Diagnostics.Debug.WriteLine("api get failed, price not updated");
-                CurrentPriceTextColor = "DarkOrange";
-                return;
-            }
-
-            //update the data from the json
-            _newPrice = (double)ticker["price"];
-        }
-
-        /// <summary>
-        /// get the current ticker from the api url
-        /// </summary>
-        /// <returns>the ticker as a Newtonsoft.Json JObject</returns>
-        private JObject GetTickerFromAlternateApi() {
-
-            //get json string from the url
-            String jsonString = null;
-            try {
-                using (WebClient wc = new WebClient()) {
-                    jsonString = wc.DownloadString($"{_baseAlternateApiUrl}{CoinName}-usd");
-                }
-            } catch (Exception ex) {
-                System.Diagnostics.Debug.WriteLine($"Exception received for {CoinName} - {ex.Message}");
-                jsonString = null;
-            }
-
-
-            if (jsonString != null) {
-                try {
-                    JObject json = JObject.Parse(jsonString);
-                    if ((bool)json["success"] == true) {
-                        return (JObject)json["ticker"];
-                    } else {
-                        System.Diagnostics.Debug.WriteLine($"API ERROR for {CoinName} - {json["error"]}");
-                    }
-                } catch (JsonReaderException ex) {
-                    System.Diagnostics.Debug.WriteLine($"Exception received for {CoinName} = {ex.Message}");
-                }
-                
-            }
-
-            return null;
         }
 
         #endregion

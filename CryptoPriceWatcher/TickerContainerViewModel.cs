@@ -27,7 +27,7 @@ namespace CryptoPriceWatcher {
         /// <summary>
         /// the interval between checking the API for new prices
         /// </summary>
-        private int _updateIntervalMillis = 15000;
+        private int _updateIntervalMillis = 8000;
 
         /// <summary>
         /// the current interval count used for the dispatcher timer
@@ -43,6 +43,16 @@ namespace CryptoPriceWatcher {
         /// the total USD spent on coins
         /// </summary>
         private double _initialCost = 0;
+
+        /// <summary>
+        /// list of indices in random order for updating tickers
+        /// </summary>
+        private Queue<int> _randomizedIndexQueue;
+
+        /// <summary>
+        /// the number of tickers to be polled via the API at a time
+        /// </summary>
+        private int _tickerBatchCount = 5;
 
         /// <summary>
         /// the list of active tickers
@@ -107,10 +117,12 @@ namespace CryptoPriceWatcher {
             DBConnection db = new DBConnection();
             List<CoinInfo> coins = db.GetCoins();
 
+            //create ticker for each coin
             foreach (CoinInfo coin in coins) {
                 System.Diagnostics.Debug.WriteLine($"Adding coin {coin.Name} with amount {coin.Count} at buy price {coin.EntryPrice}");
                 _tickers.Add(new Ticker(coin.Name, coin.Count, coin.EntryPrice));
             }
+            CreateRandomTickerUpdateOrder();
 
             UpdateCommand = new RelayCommand(UpdateCoinDB);
             AddNewTickerCommand = new RelayCommand(AddNewTicker);
@@ -140,10 +152,24 @@ namespace CryptoPriceWatcher {
             _updateTimer.Interval = TimeSpan.FromMilliseconds(_animateIntervalMillis);
             _updateTimer.Tick += (sender, e) => {
 
-                //larget interval - check API for new price
+                //larger interval - check API for new prices
                 if (_currentIntervalCount == _updateInterval) {
+
                     _currentIntervalCount = 0;
-                    UpdateTickers();
+
+                    //choose random batch of tickers to update
+                    int[] tickerIndices = new int[_tickerBatchCount];
+                    for (int i = 0; i < _tickerBatchCount; i++) {
+                        if (_randomizedIndexQueue.Count == 0) {
+                            CreateRandomTickerUpdateOrder();
+                        }
+                        tickerIndices[i] = _randomizedIndexQueue.Dequeue();
+                    }
+                    UpdateTickers(tickerIndices);
+                    UpdateTotal();
+                    if (NewCoinBackgroundColor != "#CCC") {
+                        NewCoinBackgroundColor = "#CCC";
+                    }
                 }
 
                 //smaller interval - otherwise check if the price needs to be animated
@@ -160,17 +186,54 @@ namespace CryptoPriceWatcher {
             _updateTimer.IsEnabled = true;
         }
 
-        private void UpdateTickers() {
+        /// <summary>
+        /// create randomized order for tickers to be updated
+        /// </summary>
+        private void CreateRandomTickerUpdateOrder() {
+            _randomizedIndexQueue = TickerUtils.GetRandomIndexQueue(Tickers.Count);
+            System.Diagnostics.Debug.WriteLine($"Randomized order = {TickerUtils.StringifyQueue(_randomizedIndexQueue)}");
+        }
 
-            for (int i = 0; i < Tickers.Count; i++) {
-                Tickers[i].CheckForNewPrice();
-                Tickers[i].Portion = $"{(Convert.ToDouble(Tickers[i].USDHoldings.Substring(1)) / Convert.ToDouble(TotalUSD.Substring(1))):%##0}";
-            }
-            UpdateTotal();
+        /// <summary>
+        /// polls the API to get new prices for the desired tickers
+        /// </summary>
+        /// <param name="tickerIndices">the indices of the tickers to be updated</param>
+        private void UpdateTickers(int[] tickerIndices) {
 
-            if (NewCoinBackgroundColor != "#CCC") {
-                NewCoinBackgroundColor = "#CCC";
+            //build URL string for desired coins
+            String fsyms = "";
+            foreach (int i in tickerIndices) {
+                fsyms += Tickers[i].CoinName + ",";
             }
+            fsyms = fsyms.Substring(0, fsyms.Length - 1);
+            System.Diagnostics.Debug.WriteLine($"Checking prices for = {fsyms}");
+            String apiUrl = $"https://min-api.cryptocompare.com/data/pricemulti?fsyms={fsyms}&tsyms=USD";
+
+            //get info from API
+            String jsonString = null;
+            try {
+                using (WebClient wc = new WebClient()) {
+                    jsonString = wc.DownloadString(apiUrl);
+                }
+            } catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"Error occurred polling API - {ex}");
+                jsonString = null;
+            }
+
+            //parse json and set new prices
+            if (jsonString != null) {
+                try {
+                    JObject json = JObject.Parse(jsonString);
+                    foreach (int i in tickerIndices) {
+                        JObject coinResult = (JObject)json[Tickers[i].CoinName];
+                        Tickers[i].SetNewPrice((double)coinResult["USD"]);
+                        Tickers[i].Portion = $"{(Double.Parse(Tickers[i].USDHoldings.Substring(1)) / Double.Parse(TotalUSD.Substring(1))):%##0}";
+                    }
+                } catch (Exception ex) {
+                    System.Diagnostics.Debug.WriteLine($"Error parsing JSON = {ex}");
+                }
+            }
+
         }
 
         /// <summary>
@@ -208,39 +271,6 @@ namespace CryptoPriceWatcher {
             foreach (Ticker ticker in Tickers) {
                 ticker.CoinCount = "0";
             }
-        }
-
-        /// <summary>
-        /// test animation of ticker with sentinel value
-        /// </summary>
-        /// <param name="value">test value to increase the tickers by</param>
-        private void TestTickerAnimation(double value) {
-
-            DispatcherTimer updateTimer = new DispatcherTimer();
-            updateTimer.Interval = TimeSpan.FromMilliseconds(_animateIntervalMillis);
-            updateTimer.Tick += (sender, e) => {
-
-                //larger interval - check the api for price updates
-                if (_currentIntervalCount == _updateInterval) {
-                    _currentIntervalCount = 0;
-                    foreach (Ticker ticker in Tickers) {
-                        ticker.TestIncreaseNewPrice(value);
-                    }
-                }
-
-                //smaller invterval - otherwise check if the price needs to be animated
-                else {
-                    _currentIntervalCount++;
-                    foreach (Ticker ticker in Tickers) {
-                        if (ticker.IsAnimating) {
-                            ticker.AnimateMoveTowardNewPrice();
-                        }
-                    }
-                }
-            };
-
-            updateTimer.Start();
-
         }
 
         /// <summary>
