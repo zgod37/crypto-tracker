@@ -10,6 +10,8 @@ using System.Windows.Threading;
 namespace CryptoPriceWatcher {
     public class TickerContainerViewModel : BaseViewModel {
 
+        #region Private Properties
+
         /// <summary>
         /// the collection of tickers shown in the UI (one for each coin)
         /// </summary>
@@ -56,6 +58,15 @@ namespace CryptoPriceWatcher {
         private int _tickerBatchCount = 5;
 
         /// <summary>
+        /// the indices of the current batch of tickers to be updated
+        /// </summary>
+        private int[] _currentTickerBatchIndices;
+
+        #endregion
+
+        #region Public Properties
+
+        /// <summary>
         /// the list of active tickers
         /// </summary>
         public ObservableCollection<Ticker> Tickers { get { return _tickers; } }
@@ -85,6 +96,10 @@ namespace CryptoPriceWatcher {
         /// </summary>
         public String NewCoinBackgroundColor { get; set; } = "#CCC";
 
+        #endregion
+
+        #region Public Commands
+
         /// <summary>
         /// command to update the total
         /// </summary>
@@ -105,6 +120,10 @@ namespace CryptoPriceWatcher {
         /// </summary>
         public ICommand ZeroOutAllCoinsCommand { get; set; }
 
+        #endregion
+
+        #region Constructor
+
         /// <summary>
         /// default constructor
         /// </summary>
@@ -123,7 +142,13 @@ namespace CryptoPriceWatcher {
                 System.Diagnostics.Debug.WriteLine($"Adding coin {coin.Name} with amount {coin.Count} at buy price {coin.EntryPrice}");
                 _tickers.Add(new Ticker(coin.Name, coin.Count, coin.EntryPrice));
             }
+
+            //***NOTE*** - DESIGN CHOICE HERE
+            //tickers are updated in batches to prevent API limits from being reached
+            //the order that the tickers are updated is randomized
+            //DRAWBACK - this occasionally results in redundant calls to the API when the order queue wraps around
             CreateRandomTickerUpdateOrder();
+            _currentTickerBatchIndices = Enumerable.Range(0, Tickers.Count).ToArray<int>();
 
             //get latest price for all tickers
             UpdateTickers(Enumerable.Range(0, Tickers.Count).ToArray<int>());
@@ -148,6 +173,10 @@ namespace CryptoPriceWatcher {
             StartPriceUpdatingDispatcherTimer();
         }
 
+        #endregion
+
+        #region Private Methods
+
         /// <summary>
         /// dispatcher timer to update prices for each ticker, uses fast tick rate to animate price changes
         /// </summary>
@@ -162,7 +191,7 @@ namespace CryptoPriceWatcher {
                     _currentIntervalCount = 0;
 
                     //choose random batch of tickers to update
-                    int[] tickerIndices = new int[_tickerBatchCount];
+                    _currentTickerBatchIndices = new int[_tickerBatchCount];
                     for (int i = 0; i < _tickerBatchCount; i++) {
 
                         //if queue is empty, ticker update cycle has completed,
@@ -171,9 +200,9 @@ namespace CryptoPriceWatcher {
                             CreateRandomTickerUpdateOrder();
                             UpdatePortions();
                         }
-                        tickerIndices[i] = _randomIndexQueue.Dequeue();
+                        _currentTickerBatchIndices[i] = _randomIndexQueue.Dequeue();
                     }
-                    UpdateTickers(tickerIndices);
+                    UpdateTickers(_currentTickerBatchIndices);
                     UpdateTotal();
                     if (NewCoinBackgroundColor != "#CCC") {
                         NewCoinBackgroundColor = "#CCC";
@@ -185,9 +214,9 @@ namespace CryptoPriceWatcher {
                 //*** NOTE *** it should only need to check the recently updated tickers to see if they need animating.
                 else {
                     _currentIntervalCount++;
-                    foreach (Ticker ticker in Tickers) {
-                        if (ticker.IsAnimating) {
-                            ticker.AnimateMoveTowardNewPrice();
+                    foreach (int tickerIndex in _currentTickerBatchIndices) {
+                        if (Tickers[tickerIndex].IsAnimating) {
+                            Tickers[tickerIndex].AnimateMoveTowardNewPrice();
                         }
                     }
                 }
@@ -383,6 +412,8 @@ namespace CryptoPriceWatcher {
             NewCoinBackgroundColor = "LightPink";
             return false;
         }
+
+        #endregion
 
     }
 }
