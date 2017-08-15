@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Net;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -47,10 +48,10 @@ namespace CryptoPriceWatcher {
         /// <summary>
         /// list of indices in random order for updating tickers
         /// </summary>
-        private Queue<int> _randomizedIndexQueue;
+        private Queue<int> _randomIndexQueue;
 
         /// <summary>
-        /// the number of tickers to be polled via the API at a time
+        /// the number of tickers to be updated at a time via the API
         /// </summary>
         private int _tickerBatchCount = 5;
 
@@ -124,6 +125,9 @@ namespace CryptoPriceWatcher {
             }
             CreateRandomTickerUpdateOrder();
 
+            //get latest price for all tickers
+            UpdateTickers(Enumerable.Range(0, Tickers.Count).ToArray<int>());
+
             UpdateCommand = new RelayCommand(UpdateCoinDB);
             AddNewTickerCommand = new RelayCommand(AddNewTicker);
             ToggleUpdateTimerCommand = new RelayCommand(ToggleUpdateTimer);
@@ -160,10 +164,14 @@ namespace CryptoPriceWatcher {
                     //choose random batch of tickers to update
                     int[] tickerIndices = new int[_tickerBatchCount];
                     for (int i = 0; i < _tickerBatchCount; i++) {
-                        if (_randomizedIndexQueue.Count == 0) {
+
+                        //if queue is empty, ticker update cycle has completed,
+                        //so create new random order and update poritions
+                        if (_randomIndexQueue.Count == 0) {
                             CreateRandomTickerUpdateOrder();
+                            UpdatePortions();
                         }
-                        tickerIndices[i] = _randomizedIndexQueue.Dequeue();
+                        tickerIndices[i] = _randomIndexQueue.Dequeue();
                     }
                     UpdateTickers(tickerIndices);
                     UpdateTotal();
@@ -172,7 +180,9 @@ namespace CryptoPriceWatcher {
                     }
                 }
 
-                //smaller interval - otherwise check if the price needs to be animated
+                //smaller interval - otherwise check if any prices need to be animated
+                //*** NOTE *** this could be better optimized, since tickers are only updated in batches,
+                //*** NOTE *** it should only need to check the recently updated tickers to see if they need animating.
                 else {
                     _currentIntervalCount++;
                     foreach (Ticker ticker in Tickers) {
@@ -187,11 +197,11 @@ namespace CryptoPriceWatcher {
         }
 
         /// <summary>
-        /// create randomized order for tickers to be updated
+        /// create random order for tickers to be updated
         /// </summary>
         private void CreateRandomTickerUpdateOrder() {
-            _randomizedIndexQueue = TickerUtils.GetRandomIndexQueue(Tickers.Count);
-            System.Diagnostics.Debug.WriteLine($"Randomized order = {TickerUtils.StringifyQueue(_randomizedIndexQueue)}");
+            _randomIndexQueue = TickerUtils.GetRandomIndexQueue(Tickers.Count);
+            System.Diagnostics.Debug.WriteLine($"Randomized order = {TickerUtils.StringifyQueue(_randomIndexQueue)}");
         }
 
         /// <summary>
@@ -205,15 +215,13 @@ namespace CryptoPriceWatcher {
             foreach (int i in tickerIndices) {
                 fsyms += Tickers[i].CoinName + ",";
             }
-            fsyms = fsyms.Substring(0, fsyms.Length - 1);
             System.Diagnostics.Debug.WriteLine($"Checking prices for = {fsyms}");
-            String apiUrl = $"https://min-api.cryptocompare.com/data/pricemulti?fsyms={fsyms}&tsyms=USD";
 
             //get info from API
             String jsonString = null;
             try {
                 using (WebClient wc = new WebClient()) {
-                    jsonString = wc.DownloadString(apiUrl);
+                    jsonString = wc.DownloadString($"https://min-api.cryptocompare.com/data/pricemulti?fsyms={fsyms}&tsyms=USD");
                 }
             } catch (Exception ex) {
                 System.Diagnostics.Debug.WriteLine($"Error occurred polling API - {ex}");
@@ -227,13 +235,20 @@ namespace CryptoPriceWatcher {
                     foreach (int i in tickerIndices) {
                         JObject coinResult = (JObject)json[Tickers[i].CoinName];
                         Tickers[i].SetNewPrice((double)coinResult["USD"]);
-                        Tickers[i].Portion = $"{(Double.Parse(Tickers[i].USDHoldings.Substring(1)) / Double.Parse(TotalUSD.Substring(1))):%##0}";
                     }
                 } catch (Exception ex) {
                     System.Diagnostics.Debug.WriteLine($"Error parsing JSON = {ex}");
                 }
             }
+        }
 
+        /// <summary>
+        /// calculate the portion for each ticker based on USD amounts
+        /// </summary>
+        private void UpdatePortions() {
+            foreach (Ticker ticker in Tickers) {
+                ticker.Portion = $"{(Double.Parse(ticker.USDHoldings.Substring(1)) / Double.Parse(TotalUSD.Substring(1))):%##0}";
+            }
         }
 
         /// <summary>

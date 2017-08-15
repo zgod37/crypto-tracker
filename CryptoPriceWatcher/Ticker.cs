@@ -11,11 +11,6 @@ namespace CryptoPriceWatcher {
         #region Private Properties
 
         /// <summary>
-        /// the base url to the main price api
-        /// </summary>
-        private String _baseApiUrl = "https://min-api.cryptocompare.com/data/price?fsym=";
-
-        /// <summary>
         /// the previous price for the coin
         /// </summary>
         private double _lastPrice = 0;
@@ -225,11 +220,6 @@ namespace CryptoPriceWatcher {
             BorderBrushColor = "DarkGreen";
             BorderBackgroundColor = Colors.White;
 
-            //initialize price values
-            SetPriceFromApi();
-            _lastPrice = _newPrice;
-            Update();
-
         }
 
         #endregion
@@ -345,33 +335,6 @@ namespace CryptoPriceWatcher {
             double usd = _newPrice * coins;
             double profit = usd - (Double.Parse(EntryPrice.Substring(1)) * coins);
             Profit = $"{profit:+$###0.00;-$###0.00}";
-        }
-
-        /// <summary>
-        /// set the price from the main
-        /// </summary>
-        private void SetPriceFromApi() {
-
-            //get json string from the url
-            String jsonString = null;
-            try {
-                using (WebClient wc = new WebClient()) {
-                    jsonString = wc.DownloadString($"{_baseApiUrl}{CoinName}&tsyms=USD");
-                }
-            } catch (Exception ex) {
-                System.Diagnostics.Debug.WriteLine($"Exception thrown for {CoinName} - {ex.Message}");
-                jsonString = null;
-            }
-
-
-            if (jsonString != null) {
-                JObject json = JObject.Parse(jsonString);
-                if (json["USD"] != null) {
-                    _newPrice = (double)json["USD"];
-                } else {
-                    System.Diagnostics.Debug.WriteLine($"API ERROR for {CoinName} - {json["error"]}");
-                }
-            }
         }
 
         #endregion
