@@ -3,6 +3,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Net;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace CryptoPriceWatcher {
@@ -174,6 +175,17 @@ namespace CryptoPriceWatcher {
         /// </summary>
         public bool IsAnimating { get; set; } = false;
 
+        /// <summary>
+        /// command to request removal of ticker from list
+        /// </summary>
+        public ICommand RequestRemoveCommand { get; set; }
+
+        /// <summary>
+        /// whether or not the ticker has been requested to be removed by user
+        /// ***NOTE*** this is used to remove ticker safely from the update list
+        /// </summary>
+        public bool RemoveRequested { get; set; } = false;
+
         #endregion
 
         #region Dependency Properties
@@ -214,12 +226,13 @@ namespace CryptoPriceWatcher {
 
             CoinName = coinName;
             CoinCount = $"{amount}";
-            EntryPrice = $"${averageBuyPrice:###0.00}";
+            EntryPrice = $"{averageBuyPrice:###0.00}";
 
             CurrentPriceTextColor = "Green";
             BorderBrushColor = "DarkGreen";
             BorderBackgroundColor = Colors.White;
 
+            RequestRemoveCommand = new RelayCommand(RequestRemove);
         }
 
         #endregion
@@ -231,6 +244,11 @@ namespace CryptoPriceWatcher {
         /// </summary>
         /// <param name="newPrice"></param>
         public void SetNewPrice(double newPrice) {
+
+            if (RemoveRequested == true) {
+                return;
+            }
+
             _newPrice = newPrice;
             if (_newPrice != _lastPrice) {
                 UpdateDisplay();
@@ -241,13 +259,13 @@ namespace CryptoPriceWatcher {
         /// updates the UI with new values WITHOUT animating
         /// </summary>
         public void Update() {
-            CurrentPriceText = $"${_newPrice:###0.00}";
+            CurrentPriceText = $"{_newPrice:###0.00}";
 
             double coins = Double.Parse(CoinCount);
             double usd = _newPrice * coins;
-            double profit = usd - (Double.Parse(EntryPrice.Substring(1)) * coins);
+            double profit = usd - (Double.Parse(EntryPrice) * coins);
             System.Diagnostics.Debug.WriteLine($"Profit = {profit}");
-            USDHoldings = $"${usd:###0.00}";
+            USDHoldings = $"{usd:###0.00}";
             Profit = $"{profit:+$###0.00;-$###0.00}";
         }
 
@@ -255,7 +273,7 @@ namespace CryptoPriceWatcher {
         /// update the USD total
         /// </summary>
         public void UpdateTotals() {
-            USDHoldings = $"${_newPrice * Double.Parse(CoinCount):###0.00}";
+            USDHoldings = $"{_newPrice * Double.Parse(CoinCount):###0.00}";
             UpdateProfit();
         }
 
@@ -323,8 +341,8 @@ namespace CryptoPriceWatcher {
         /// </summary>
         /// <param name="price"></param>
         private void UpdateCurrentText() {
-            CurrentPriceText = $"${_lastPrice:###0.00}";
-            USDHoldings = $"${_newPrice*Double.Parse(CoinCount):###0.00}";
+            CurrentPriceText = $"{_lastPrice:###0.00}";
+            USDHoldings = $"{_newPrice*Double.Parse(CoinCount):###0.00}";
         }
 
         /// <summary>
@@ -333,8 +351,18 @@ namespace CryptoPriceWatcher {
         private void UpdateProfit() {
             double coins = Double.Parse(CoinCount);
             double usd = _newPrice * coins;
-            double profit = usd - (Double.Parse(EntryPrice.Substring(1)) * coins);
+            double profit = usd - (Double.Parse(EntryPrice) * coins);
             Profit = $"{profit:+$###0.00;-$###0.00}";
+        }
+
+        /// <summary>
+        /// send request to ticker container to remove this ticker,
+        /// ticker will be grayed out until it is safely removed
+        /// </summary>
+        private void RequestRemove() {
+            BorderBrushColor = "Orange";
+            BorderBackgroundColor = Color.FromArgb(50, 238, 238, 238);
+            RemoveRequested = true;
         }
 
         #endregion

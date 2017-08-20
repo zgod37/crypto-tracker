@@ -196,10 +196,12 @@ namespace CryptoPriceWatcher {
 
                         //if queue is empty, ticker update cycle has completed,
                         //so create new random order and update poritions
+                        //***NOTE*** this can create redundant coins in a ticker batch due to wrap-around
                         if (_randomIndexQueue.Count == 0) {
-                            CreateRandomTickerUpdateOrder();
                             UpdatePortions();
+                            CreateRandomTickerUpdateOrder();
                         }
+
                         _currentTickerBatchIndices[i] = _randomIndexQueue.Dequeue();
                     }
                     UpdateTickers(_currentTickerBatchIndices);
@@ -210,8 +212,6 @@ namespace CryptoPriceWatcher {
                 }
 
                 //smaller interval - otherwise check if any prices need to be animated
-                //*** NOTE *** this could be better optimized, since tickers are only updated in batches,
-                //*** NOTE *** it should only need to check the recently updated tickers to see if they need animating.
                 else {
                     _currentIntervalCount++;
                     foreach (int tickerIndex in _currentTickerBatchIndices) {
@@ -275,8 +275,13 @@ namespace CryptoPriceWatcher {
         /// calculate the portion for each ticker based on USD amounts
         /// </summary>
         private void UpdatePortions() {
-            foreach (Ticker ticker in Tickers) {
-                ticker.Portion = $"{(Double.Parse(ticker.USDHoldings.Substring(1)) / Double.Parse(TotalUSD.Substring(1))):%##0}";
+            for (int i=0; i<Tickers.Count; i++) {
+                if (Tickers[i].RemoveRequested == true) {
+                    Tickers.RemoveAt(i);
+                    i--;
+                } else {
+                    Tickers[i].Portion = $"{(Double.Parse(Tickers[i].USDHoldings) / Double.Parse(TotalUSD)):%##0}";
+                }
             }
         }
 
@@ -324,9 +329,9 @@ namespace CryptoPriceWatcher {
             double total = 0;
             foreach (Ticker ticker in Tickers) {
                 ticker.UpdateTotals();
-                total += Double.Parse(ticker.USDHoldings.Substring(1));
+                total += Double.Parse(ticker.USDHoldings);
             }
-            TotalUSD = $"${total:###0.00}";
+            TotalUSD = $"{total:###0.00}";
             TotalProfit = $"{total - _initialCost:+$###0.00;-$###0.00}";
         }
 
@@ -347,7 +352,7 @@ namespace CryptoPriceWatcher {
             //build list of new coininfo
             List<CoinInfo> newCoins = new List<CoinInfo>();
             foreach (Ticker ticker in Tickers) {
-                newCoins.Add(new CoinInfo(ticker.CoinName, Double.Parse(ticker.CoinCount), Double.Parse(ticker.EntryPrice.Substring(1))));
+                newCoins.Add(new CoinInfo(ticker.CoinName, Double.Parse(ticker.CoinCount), Double.Parse(ticker.EntryPrice)));
             }
 
             //update DB
