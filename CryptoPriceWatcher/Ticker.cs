@@ -99,6 +99,19 @@ namespace CryptoPriceWatcher {
         }
 
         /// <summary>
+        /// the height of the ticker in pixels
+        /// --used to hide ticker before it can be removed safely
+        /// </summary>
+        public String TickerHeight {
+            get {
+                return (String)GetValue(TickerHeightDP);
+            }
+            set {
+                SetValue(TickerHeightDP, value);
+            }
+        }
+
+        /// <summary>
         /// color of the border background
         /// </summary>
         public Color BorderBackgroundColor {
@@ -210,6 +223,8 @@ namespace CryptoPriceWatcher {
 
         public static readonly DependencyProperty PortionDP = DependencyProperty.Register("Portion", typeof(String), typeof(Ticker), new UIPropertyMetadata(""));
 
+        public static readonly DependencyProperty TickerHeightDP = DependencyProperty.Register("TickerHeight", typeof(String), typeof(Ticker), new UIPropertyMetadata(""));
+
         public static readonly DependencyProperty BorderBrushColorDP = DependencyProperty.Register("BorderBrushColor", typeof(String), typeof(Ticker), new UIPropertyMetadata(""));
 
         public static readonly DependencyProperty BorderBackgroundColorDP = DependencyProperty.Register("BorderBackgroundColor", typeof(String), typeof(Ticker), new UIPropertyMetadata(""));
@@ -223,6 +238,8 @@ namespace CryptoPriceWatcher {
         /// </summary>
         /// <param name="coinName">the coin tracked in this ticker</param>
         public Ticker(String coinName, double amount, double averageBuyPrice) {
+            System.Diagnostics.Debug.WriteLine("Initializing ticker..");
+            TickerHeight = "30";
 
             CoinName = coinName;
             CoinCount = $"{amount}";
@@ -240,6 +257,15 @@ namespace CryptoPriceWatcher {
         #region Public Methods
 
         /// <summary>
+        /// initialize the current ticker price with the latest price from API
+        /// </summary>
+        /// <param name="initialPrice"></param>
+        public void InitializePrice(double initialPrice) {
+            _lastPrice = _newPrice = initialPrice;
+            CurrentPriceText = $"{_newPrice:###0.00}";
+        }
+
+        /// <summary>
         /// set the new ticker price and update if price has changed
         /// </summary>
         /// <param name="newPrice"></param>
@@ -253,20 +279,6 @@ namespace CryptoPriceWatcher {
             if (_newPrice != _lastPrice) {
                 UpdateDisplay();
             }
-        }
-
-        /// <summary>
-        /// updates the UI with new values WITHOUT animating
-        /// </summary>
-        public void Update() {
-            CurrentPriceText = $"{_newPrice:###0.00}";
-
-            double coins = Double.Parse(CoinCount);
-            double usd = _newPrice * coins;
-            double profit = usd - (Double.Parse(EntryPrice) * coins);
-            System.Diagnostics.Debug.WriteLine($"Profit = {profit}");
-            USDHoldings = $"{usd:###0.00}";
-            Profit = $"{profit:+$###0.00;-$###0.00}";
         }
 
         /// <summary>
@@ -357,11 +369,10 @@ namespace CryptoPriceWatcher {
 
         /// <summary>
         /// send request to ticker container to remove this ticker,
-        /// ticker will be grayed out until it is safely removed
+        /// ticker will be hidden until it is safely removed by container
         /// </summary>
         private void RequestRemove() {
-            BorderBrushColor = "Orange";
-            BorderBackgroundColor = Color.FromArgb(50, 238, 238, 238);
+            TickerHeight = "0";
             RemoveRequested = true;
         }
 

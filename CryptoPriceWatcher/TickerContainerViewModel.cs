@@ -148,17 +148,17 @@ namespace CryptoPriceWatcher {
             //the order that the tickers are updated is randomized
             //DRAWBACK - this occasionally results in redundant calls to the API when the order queue wraps around
             CreateRandomTickerUpdateOrder();
-            _currentTickerBatchIndices = Enumerable.Range(0, Tickers.Count).ToArray<int>();
+            _currentTickerBatchIndices = new int[_tickerBatchCount];
 
             //get latest price for all tickers
-            UpdateTickers(Enumerable.Range(0, Tickers.Count).ToArray<int>());
+            InitializePrices();
 
             UpdateCommand = new RelayCommand(UpdateCoinDB);
             AddNewTickerCommand = new RelayCommand(AddNewTicker);
             ToggleUpdateTimerCommand = new RelayCommand(ToggleUpdateTimer);
             ZeroOutAllCoinsCommand = new RelayCommand(ZeroOutAllCoins);
 
-            //**NOTE** not calculating initial cost from buy-ins, but using initial USD spent on coinbase
+            //**NOTE** not calculating initial cost from buy-ins, but using initial USD spent
             _initialCost = 6513.19;
             //CalculateInitialCost(amounts, buys);
 
@@ -195,17 +195,32 @@ namespace CryptoPriceWatcher {
                     for (int i = 0; i < _tickerBatchCount; i++) {
 
                         //if queue is empty, ticker update cycle has completed,
-                        //so create new random order and update poritions
+                        //so first remove any unwanted tickers and update portions
+                        //then create new random ticker order
                         //***NOTE*** this can create redundant coins in a ticker batch due to wrap-around
                         if (_randomIndexQueue.Count == 0) {
-                            UpdatePortions();
+
+                            for (int tickerIndex = 0; tickerIndex < Tickers.Count; tickerIndex++) {
+                                if (Tickers[tickerIndex].RemoveRequested == true) {
+                                    Tickers.RemoveAt(tickerIndex);
+                                    tickerIndex--;
+                                } else {
+                                    UpdatePortion(Tickers[tickerIndex]);
+                                }
+                            }
+
                             CreateRandomTickerUpdateOrder();
                         }
 
                         _currentTickerBatchIndices[i] = _randomIndexQueue.Dequeue();
                     }
+
+                    //update the current batch of tickers
                     UpdateTickers(_currentTickerBatchIndices);
+
+                    //update the USD total
                     UpdateTotal();
+
                     if (NewCoinBackgroundColor != "#CCC") {
                         NewCoinBackgroundColor = "#CCC";
                     }
@@ -223,6 +238,23 @@ namespace CryptoPriceWatcher {
             };
 
             _updateTimer.IsEnabled = true;
+        }
+
+        private void InitializePrices() {
+
+            String jsonString = GetJsonStringForTickers(Enumerable.Range(0, Tickers.Count).ToArray<int>());
+
+            if (jsonString != null) {
+                try {
+                    JObject json = JObject.Parse(jsonString);
+                    for (int i = 0; i < Tickers.Count; i++) {
+                        JObject coinResult = (JObject)json[Tickers[i].CoinName];
+                        Tickers[i].InitializePrice((double)coinResult["USD"]);
+                    }
+                } catch (Exception ex) {
+                    System.Diagnostics.Debug.WriteLine($"Error parsing JSON = {ex}");
+                }
+            }
         }
 
         /// <summary>
@@ -272,17 +304,10 @@ namespace CryptoPriceWatcher {
         }
 
         /// <summary>
-        /// calculate the portion for each ticker based on USD amounts
+        /// calculate the portion for ticker based on USD amounts
         /// </summary>
-        private void UpdatePortions() {
-            for (int i=0; i<Tickers.Count; i++) {
-                if (Tickers[i].RemoveRequested == true) {
-                    Tickers.RemoveAt(i);
-                    i--;
-                } else {
-                    Tickers[i].Portion = $"{(Double.Parse(Tickers[i].USDHoldings) / Double.Parse(TotalUSD)):%##0}";
-                }
-            }
+        private void UpdatePortion(Ticker ticker) {
+            ticker.Portion = $"{(Double.Parse(ticker.USDHoldings) / Double.Parse(TotalUSD)):%##0}";
         }
 
         /// <summary>
@@ -386,6 +411,34 @@ namespace CryptoPriceWatcher {
             }
             Tickers.Add(new Ticker(NewCoin, 0, 0));
             NewCoin = "";
+        }
+
+        /// <summary>
+        /// build url string for coins
+        /// </summary>
+        /// <param name="tickerIndices"></param>
+        /// <returns></returns>
+        private String GetJsonStringForTickers(int[] tickerIndices) {
+
+            //build api url
+            String fsyms = "";
+            foreach (int i in tickerIndices) {
+                fsyms += Tickers[i].CoinName + ",";
+            }
+            System.Diagnostics.Debug.WriteLine($"Checking prices for = {fsyms}");
+
+            //get info from API
+            String jsonString = null;
+            try {
+                using (WebClient wc = new WebClient()) {
+                    jsonString = wc.DownloadString($"https://min-api.cryptocompare.com/data/pricemulti?fsyms={fsyms}&tsyms=USD");
+                }
+            } catch (Exception ex) {
+                System.Diagnostics.Debug.WriteLine($"Error occurred polling API - {ex}");
+                jsonString = null;
+            }
+
+            return jsonString;
         }
 
         /// <summary>

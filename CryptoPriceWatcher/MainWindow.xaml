@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:CryptoPriceWatcher"
         mc:Ignorable="d"
-        Title="CryptoTracker" Width="600" SizeToContent="Height">
+        Title="CryptoTracker" Width="600" Height="Auto" SizeToContent="Height">
 
     <Window.InputBindings>
 
@@ -18,11 +18,11 @@
 
         <!-- ticker template -->
         <DataTemplate x:Key="TickerTemplate">
-            <Border BorderBrush="{Binding BorderBrushColor}" BorderThickness="2" Margin="1">
+            <Border Height="{Binding TickerHeight}" BorderBrush="{Binding BorderBrushColor}" BorderThickness="2" Margin="1">
                 <Border.Background>
                     <SolidColorBrush Color="{Binding BorderBackgroundColor}" />
                 </Border.Background>
-                <Grid Height="25">
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width=".5*" />
                         <ColumnDefinition Width="*" />
