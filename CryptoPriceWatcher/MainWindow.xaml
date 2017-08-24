@@ -41,8 +41,8 @@
                     <TextBlock Grid.Column="2" Text="{Binding USDHoldings, StringFormat=${0}}"/>
                     <StackPanel Grid.Column="3" Orientation="Horizontal">
                         <TextBox Text="{Binding CoinCount}" />
-                        <TextBlock Text="@" />
-                        <TextBox Text="{Binding EntryPrice, StringFormat=${0}}" Width="75" TextAlignment="Left" />
+                        <TextBlock Text="@ $" />
+                        <TextBox Text="{Binding EntryPrice}" Width="75" TextAlignment="Left" />
                     </StackPanel>
                     <TextBlock Grid.Column="4" Text="{Binding Profit}" />
                     <TextBlock Grid.Column="5" Text="{Binding Portion}" />

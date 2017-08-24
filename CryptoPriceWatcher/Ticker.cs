@@ -1,7 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System;
-using System.Net;
+﻿using System;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -189,15 +186,15 @@ namespace CryptoPriceWatcher {
         public bool IsAnimating { get; set; } = false;
 
         /// <summary>
-        /// command to request removal of ticker from list
-        /// </summary>
-        public ICommand RequestRemoveCommand { get; set; }
-
-        /// <summary>
         /// whether or not the ticker has been requested to be removed by user
         /// ***NOTE*** this is used to remove ticker safely from the update list
         /// </summary>
         public bool RemoveRequested { get; set; } = false;
+
+        /// <summary>
+        /// command to request removal of ticker from list
+        /// </summary>
+        public ICommand RequestRemoveCommand { get; set; }
 
         #endregion
 
@@ -244,6 +241,7 @@ namespace CryptoPriceWatcher {
             CoinName = coinName;
             CoinCount = $"{amount}";
             EntryPrice = $"{averageBuyPrice:###0.00}";
+            USDHoldings = "0";
 
             CurrentPriceTextColor = "Green";
             BorderBrushColor = "DarkGreen";
